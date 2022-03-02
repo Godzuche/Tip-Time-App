@@ -18,11 +18,20 @@ package com.example.tiptime
 
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.data.PreferencesDataStore
+import com.example.data.PreferencesDataStore.Companion.IS_ROUND_UP
+import com.example.data.PreferencesDataStore.Companion.TIP_OPTION
 import com.example.tiptime.databinding.ActivityMainBinding
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
 /**
@@ -32,6 +41,7 @@ class MainActivity : AppCompatActivity() {
 
     // Binding object instance with access to the views in the activity_main.xml layout
     private lateinit var binding: ActivityMainBinding
+    private lateinit var PreferencesDataStore: PreferencesDataStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +51,38 @@ class MainActivity : AppCompatActivity() {
 
         // Set the content view of the Activity to be the root view of the layout
         setContentView(binding.root)
+
+        PreferencesDataStore = PreferencesDataStore(this)
+
+        lifecycleScope.launchWhenStarted {
+            repeatOnLifecycle(Lifecycle.State.STARTED){
+                PreferencesDataStore.preferencesFlow
+                    .stateIn(lifecycleScope)
+                    .map { it[TIP_OPTION] }
+                    .collectLatest { tipPercentage ->
+                        binding.apply {
+                            when (tipPercentage) {
+                                20 -> tipOptions.check(R.id.option_twenty_percent)
+                                18 -> tipOptions.check(R.id.option_eighteen_percent)
+                                15 -> tipOptions.check(R.id.option_fifteen_percent)
+                            }
+                            Log.d("PreferenceDataStore", "collected tip option: $tipPercentage")
+                        }
+                    }
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                PreferencesDataStore.preferencesFlow
+                    .stateIn(lifecycleScope)
+                    .map { it[IS_ROUND_UP] }
+                    .collectLatest { isRoundUp ->
+                        binding.roundUpSwitch.isChecked = isRoundUp ?: true
+                        Log.d("PreferenceDataStore", "collected isRoundUp: $isRoundUp")
+                    }
+            }
+        }
 
         // Setup a click listener on the calculate button to calculate the tip
         binding.calculateButton.setOnClickListener { calculateTip() }
@@ -70,9 +112,36 @@ class MainActivity : AppCompatActivity() {
 
         // Get the tip percentage based on which radio button is selected
         val tipPercentage = when (binding.tipOptions.checkedRadioButtonId) {
-            R.id.option_twenty_percent -> 0.20
-            R.id.option_eighteen_percent -> 0.18
-            else -> 0.15
+            R.id.option_twenty_percent -> {
+                lifecycleScope.launch {
+                    PreferencesDataStore.saveInputPreferences(20,
+                        binding.roundUpSwitch.isChecked,
+                        this@MainActivity)
+                    Log.d("PreferenceDataStore",
+                        "Saved successful \n tipOption = 20, isRoundUp = ${binding.roundUpSwitch.isChecked}")
+                }
+                0.20
+            }
+            R.id.option_eighteen_percent -> {
+                lifecycleScope.launch {
+                    PreferencesDataStore.saveInputPreferences(18,
+                        binding.roundUpSwitch.isChecked,
+                        this@MainActivity)
+                    Log.d("PreferenceDataStore",
+                        "Saved successful \n tipOption = 18, isRoundUp = ${binding.roundUpSwitch.isChecked}")
+                }
+                0.18
+            }
+            else -> {
+                lifecycleScope.launch {
+                    PreferencesDataStore.saveInputPreferences(15,
+                        binding.roundUpSwitch.isChecked,
+                        this@MainActivity)
+                    Log.d("PreferenceDataStore",
+                        "Saved successful \n tipOption = 15, isRoundUp = ${binding.roundUpSwitch.isChecked}")
+                }
+                0.15
+            }
         }
 
         // Calculate the tip
